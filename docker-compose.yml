@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: leads
+      POSTGRES_PASSWORD: leads
+      POSTGRES_DB: leads
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leads -d leads"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: migrate/migrate:v4.16.2
+    volumes:
+      - ./migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["migrate"]
+    profiles: ["tools"]
