@@ -41,7 +41,7 @@ func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, 
 func (s *LeadService) Get(ctx context.Context, id int) (model.Lead, error) {
 	lead, err := s.repo.GetByID(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return model.Lead{}, nil
+		return model.Lead{}, ErrNotFound
 	}
 	return lead, err
 }

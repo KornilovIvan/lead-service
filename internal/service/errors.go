@@ -13,6 +13,7 @@ var (
 	ErrImportNotFound       = errors.New("import not found")
 	ErrInvalidField         = errors.New("invalid field")
 	ErrPatternRequired      = errors.New("pattern is required")
+	ErrNotFound             = errors.New("lead not found")
 	ErrLeadNotFound         = errors.New("lead not found")
 	ErrInvalidExportKind    = errors.New("invalid export kind")
 	ErrLeadCustomerMismatch = errors.New("lead customer mismatch")
