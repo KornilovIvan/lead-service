@@ -14,19 +14,11 @@ import (
 type Handler struct {
 	customers *service.CustomerService
 	leads     *service.LeadService
+	imports   *service.ImportService
 }
 
-func New(customers *service.CustomerService, leads *service.LeadService) *Handler {
-	return &Handler{customers: customers, leads: leads}
-}
-
-func (h *Handler) Register(r chi.Router) {
-	r.Get("/health", h.health)
-	r.Post("/api/v1/customers", h.createCustomer)
-	r.Get("/api/v1/customers/{id}", h.getCustomer)
-	r.Post("/api/v1/leads", h.createLead)
-	r.Get("/api/v1/leads", h.listLeads)
-	r.Get("/api/v1/leads/{id}", h.getLead)
+func New(customers *service.CustomerService, leads *service.LeadService, imports *service.ImportService) *Handler {
+	return &Handler{customers: customers, leads: leads, imports: imports}
 }
 
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {

@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/jackc/pgx/v5/pgconn"
-
 	"lead-service/internal/model"
 	"lead-service/internal/repository"
 )
@@ -49,16 +47,4 @@ func (s *LeadService) List(ctx context.Context, customerID, limit, offset int) (
 		return nil, ErrCustomerIDRequired
 	}
 	return s.repo.ListByCustomer(ctx, customerID, limit, offset)
-}
-
-func nullIfEmpty(v *string) *string {
-	if v == nil || *v == "" {
-		return nil
-	}
-	return v
-}
-
-func isForeignKeyViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
