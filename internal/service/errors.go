@@ -20,4 +20,5 @@ var (
 	ErrLeadCustomerMismatch = errors.New("lead customer mismatch")
 	ErrSheetsURLRequired    = errors.New("sheets url is required")
 	ErrEndpointRequired     = errors.New("endpoint is required")
+	ErrDuplicateLead        = errors.New("duplicate lead")
 )

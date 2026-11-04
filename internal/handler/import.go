@@ -29,6 +29,8 @@ func (h *Handler) createImport(w http.ResponseWriter, r *http.Request) {
 		service.ErrPhoneRequired,
 		service.ErrInvalidPhone:
 		writeError(w, http.StatusBadRequest, err.Error())
+	case service.ErrDuplicateLead:
+		writeError(w, http.StatusConflict, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, err.Error())
 	}

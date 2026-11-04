@@ -27,6 +27,9 @@ func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, 
 	if isForeignKeyViolation(err) {
 		return model.Lead{}, ErrCustomerNotFound
 	}
+	if isUniqueViolation(err) {
+		return model.Lead{}, ErrDuplicateLead
+	}
 	return created, err
 }
 

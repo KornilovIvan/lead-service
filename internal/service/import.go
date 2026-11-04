@@ -58,6 +58,9 @@ func (s *ImportService) Create(ctx context.Context, req model.ImportRequest) (mo
 	if isForeignKeyViolation(err) {
 		return model.ImportJob{}, ErrCustomerNotFound
 	}
+	if isUniqueViolation(err) {
+		return model.ImportJob{}, ErrDuplicateLead
+	}
 	return created, err
 }
 
