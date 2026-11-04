@@ -141,8 +141,13 @@ func (h *Handler) listLeads(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	leads, err := h.leads.List(r.Context(), customerID, limit, offset)
-	if err == service.ErrCustomerIDRequired {
+	var status *string
+	if raw := q.Get("status"); raw != "" {
+		status = &raw
+	}
+
+	leads, err := h.leads.List(r.Context(), customerID, limit, offset, status)
+	if err == service.ErrCustomerIDRequired || err == service.ErrInvalidStatus {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

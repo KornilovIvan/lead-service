@@ -41,11 +41,14 @@ func (s *LeadService) Get(ctx context.Context, id int) (model.Lead, error) {
 	return lead, err
 }
 
-func (s *LeadService) List(ctx context.Context, customerID, limit, offset int) ([]model.Lead, error) {
+func (s *LeadService) List(ctx context.Context, customerID, limit, offset int, status *string) ([]model.Lead, error) {
 	if customerID == 0 {
 		return nil, ErrCustomerIDRequired
 	}
-	return s.repo.ListByCustomer(ctx, customerID, limit, offset)
+	if status != nil && *status != "new" && *status != "qualified" && *status != "rejected" {
+		return nil, ErrInvalidStatus
+	}
+	return s.repo.ListByCustomer(ctx, customerID, limit, offset, status)
 }
 
 func validateLead(lead model.Lead) (model.Lead, error) {
