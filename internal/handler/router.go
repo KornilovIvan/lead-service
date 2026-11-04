@@ -14,4 +14,6 @@ func (h *Handler) Register(r chi.Router) {
 	r.Get("/api/v1/imports/{id}", h.getImport)
 	r.Post("/api/v1/qualification-rules", h.createQualificationRule)
 	r.Get("/api/v1/qualification-rules", h.listQualificationRules)
+	r.Post("/api/v1/exports", h.createExport)
+	r.Get("/api/v1/exports", h.listExports)
 }

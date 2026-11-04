@@ -31,9 +31,10 @@ func main() {
 	leads := service.NewLeadService(repository.NewLeadRepository(db))
 	imports := service.NewImportService(repository.NewImportRepository(db))
 	qualification := service.NewQualificationService(repository.NewQualificationRepository(db))
+	exports := service.NewExportService(repository.NewExportRepository(db), os.Getenv("SHEETS_BASE_URL"), os.Getenv("WEBHOOK_TIMEOUT"))
 
 	r := chi.NewRouter()
-	handler.New(customers, leads, imports, qualification).Register(r)
+	handler.New(customers, leads, imports, qualification, exports).Register(r)
 
 	log.Fatal(http.ListenAndServe(addr, r))
 }

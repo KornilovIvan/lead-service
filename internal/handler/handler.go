@@ -16,10 +16,11 @@ type Handler struct {
 	leads         *service.LeadService
 	imports       *service.ImportService
 	qualification *service.QualificationService
+	exports       *service.ExportService
 }
 
-func New(customers *service.CustomerService, leads *service.LeadService, imports *service.ImportService, qualification *service.QualificationService) *Handler {
-	return &Handler{customers: customers, leads: leads, imports: imports, qualification: qualification}
+func New(customers *service.CustomerService, leads *service.LeadService, imports *service.ImportService, qualification *service.QualificationService, exports *service.ExportService) *Handler {
+	return &Handler{customers: customers, leads: leads, imports: imports, qualification: qualification, exports: exports}
 }
 
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
