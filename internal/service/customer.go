@@ -19,9 +19,9 @@ func NewCustomerService(repo *repository.CustomerRepository) *CustomerService {
 }
 
 func (s *CustomerService) Create(ctx context.Context, name string) (model.Customer, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return model.Customer{}, ErrNameRequired
+	name, err := validateCustomerName(name)
+	if err != nil {
+		return model.Customer{}, err
 	}
 	return s.repo.Create(ctx, name)
 }
@@ -32,4 +32,12 @@ func (s *CustomerService) Get(ctx context.Context, id int) (model.Customer, erro
 		return model.Customer{}, ErrCustomerNotFound
 	}
 	return customer, err
+}
+
+func validateCustomerName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ErrNameRequired
+	}
+	return name, nil
 }

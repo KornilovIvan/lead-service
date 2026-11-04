@@ -18,17 +18,9 @@ func NewLeadService(repo *repository.LeadRepository) *LeadService {
 }
 
 func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, error) {
-	phone, err := requirePhone(lead.Phone)
+	lead, err := validateLead(lead)
 	if err != nil {
 		return model.Lead{}, err
-	}
-	lead.Phone = phone
-
-	if lead.Status == "" {
-		lead.Status = "new"
-	}
-	if lead.Status != "new" && lead.Status != "qualified" && lead.Status != "rejected" {
-		return model.Lead{}, ErrInvalidStatus
 	}
 
 	created, err := s.repo.Create(ctx, lead)
@@ -51,4 +43,20 @@ func (s *LeadService) List(ctx context.Context, customerID, limit, offset int) (
 		return nil, ErrCustomerIDRequired
 	}
 	return s.repo.ListByCustomer(ctx, customerID, limit, offset)
+}
+
+func validateLead(lead model.Lead) (model.Lead, error) {
+	phone, err := requirePhone(lead.Phone)
+	if err != nil {
+		return model.Lead{}, err
+	}
+	lead.Phone = phone
+
+	if lead.Status == "" {
+		lead.Status = "new"
+	}
+	if lead.Status != "new" && lead.Status != "qualified" && lead.Status != "rejected" {
+		return model.Lead{}, ErrInvalidStatus
+	}
+	return lead, nil
 }

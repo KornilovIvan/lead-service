@@ -71,17 +71,5 @@ func (s *ImportService) Get(ctx context.Context, id int) (model.ImportJob, error
 
 func prepareImportedLead(lead model.Lead, customerID int) (model.Lead, error) {
 	lead.CustomerID = customerID
-	phone, err := requirePhone(lead.Phone)
-	if err != nil {
-		return model.Lead{}, err
-	}
-	lead.Phone = phone
-
-	if lead.Status == "" {
-		lead.Status = "new"
-	}
-	if lead.Status != "new" && lead.Status != "qualified" && lead.Status != "rejected" {
-		return model.Lead{}, ErrInvalidStatus
-	}
-	return lead, nil
+	return validateLead(lead)
 }
