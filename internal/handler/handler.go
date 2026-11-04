@@ -75,7 +75,7 @@ func (h *Handler) createLead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lead, err := h.leads.Create(r.Context(), req)
-	if err == service.ErrCustomerNotFound || err == service.ErrInvalidStatus {
+	if err == service.ErrCustomerNotFound || err == service.ErrInvalidStatus || err == service.ErrPhoneRequired {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

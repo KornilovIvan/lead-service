@@ -71,7 +71,11 @@ func (s *ImportService) Get(ctx context.Context, id int) (model.ImportJob, error
 
 func prepareImportedLead(lead model.Lead, customerID int) (model.Lead, error) {
 	lead.CustomerID = customerID
-	lead.Phone = nullIfEmpty(lead.Phone)
+	phone, err := requirePhone(lead.Phone)
+	if err != nil {
+		return model.Lead{}, err
+	}
+	lead.Phone = phone
 
 	if lead.Status == "" {
 		lead.Status = "new"

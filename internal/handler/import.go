@@ -19,7 +19,7 @@ func (h *Handler) createImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := h.imports.Create(r.Context(), req)
-	if err == service.ErrCustomerNotFound || err == service.ErrInvalidSource || err == service.ErrInvalidImport || err == service.ErrInvalidStatus {
+	if err == service.ErrCustomerNotFound || err == service.ErrInvalidSource || err == service.ErrInvalidImport || err == service.ErrInvalidStatus || err == service.ErrPhoneRequired {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

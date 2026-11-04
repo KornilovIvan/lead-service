@@ -4,6 +4,7 @@ import "errors"
 
 var (
 	ErrNameRequired         = errors.New("name is required")
+	ErrPhoneRequired        = errors.New("phone is required")
 	ErrCustomerNotFound     = errors.New("customer not found")
 	ErrInvalidStatus        = errors.New("invalid status")
 	ErrCustomerIDRequired   = errors.New("customer_id is required")

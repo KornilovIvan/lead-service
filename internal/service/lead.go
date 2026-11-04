@@ -18,7 +18,11 @@ func NewLeadService(repo *repository.LeadRepository) *LeadService {
 }
 
 func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, error) {
-	lead.Phone = nullIfEmpty(lead.Phone)
+	phone, err := requirePhone(lead.Phone)
+	if err != nil {
+		return model.Lead{}, err
+	}
+	lead.Phone = phone
 
 	if lead.Status == "" {
 		lead.Status = "new"

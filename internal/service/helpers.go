@@ -2,15 +2,20 @@ package service
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func nullIfEmpty(v *string) *string {
-	if v == nil || *v == "" {
-		return nil
+func requirePhone(v *string) (*string, error) {
+	if v == nil {
+		return nil, ErrPhoneRequired
 	}
-	return v
+	phone := strings.TrimSpace(*v)
+	if phone == "" {
+		return nil, ErrPhoneRequired
+	}
+	return &phone, nil
 }
 
 func isForeignKeyViolation(err error) bool {
