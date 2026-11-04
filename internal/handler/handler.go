@@ -75,15 +75,17 @@ func (h *Handler) createLead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lead, err := h.leads.Create(r.Context(), req)
-	if err == service.ErrCustomerNotFound || err == service.ErrInvalidStatus || err == service.ErrPhoneRequired {
+	switch err {
+	case nil:
+		writeJSON(w, http.StatusCreated, lead)
+	case service.ErrCustomerNotFound,
+		service.ErrInvalidStatus,
+		service.ErrPhoneRequired,
+		service.ErrInvalidPhone:
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err != nil {
+	default:
 		writeError(w, http.StatusInternalServerError, err.Error())
-		return
 	}
-	writeJSON(w, http.StatusCreated, lead)
 }
 
 func (h *Handler) getLead(w http.ResponseWriter, r *http.Request) {

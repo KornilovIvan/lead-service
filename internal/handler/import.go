@@ -19,15 +19,19 @@ func (h *Handler) createImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := h.imports.Create(r.Context(), req)
-	if err == service.ErrCustomerNotFound || err == service.ErrInvalidSource || err == service.ErrInvalidImport || err == service.ErrInvalidStatus || err == service.ErrPhoneRequired {
+	switch err {
+	case nil:
+		writeJSON(w, http.StatusCreated, job)
+	case service.ErrCustomerNotFound,
+		service.ErrInvalidSource,
+		service.ErrInvalidImport,
+		service.ErrInvalidStatus,
+		service.ErrPhoneRequired,
+		service.ErrInvalidPhone:
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err != nil {
+	default:
 		writeError(w, http.StatusInternalServerError, err.Error())
-		return
 	}
-	writeJSON(w, http.StatusCreated, job)
 }
 
 func (h *Handler) getImport(w http.ResponseWriter, r *http.Request) {

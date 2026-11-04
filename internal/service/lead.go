@@ -46,11 +46,12 @@ func (s *LeadService) List(ctx context.Context, customerID, limit, offset int) (
 }
 
 func validateLead(lead model.Lead) (model.Lead, error) {
-	phone, err := requirePhone(lead.Phone)
+	phone, err := normalizePhone(lead.Phone)
 	if err != nil {
 		return model.Lead{}, err
 	}
 	lead.Phone = phone
+	lead.Email = normalizeEmail(lead.Email)
 
 	if lead.Status == "" {
 		lead.Status = "new"
