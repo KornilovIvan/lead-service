@@ -30,9 +30,10 @@ func main() {
 	customers := service.NewCustomerService(repository.NewCustomerRepository(db))
 	leads := service.NewLeadService(repository.NewLeadRepository(db))
 	imports := service.NewImportService(repository.NewImportRepository(db))
+	qualification := service.NewQualificationService(repository.NewQualificationRepository(db))
 
 	r := chi.NewRouter()
-	handler.New(customers, leads, imports).Register(r)
+	handler.New(customers, leads, imports, qualification).Register(r)
 
 	log.Fatal(http.ListenAndServe(addr, r))
 }

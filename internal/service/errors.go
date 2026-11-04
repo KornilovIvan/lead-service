@@ -10,4 +10,7 @@ var (
 	ErrInvalidSource      = errors.New("invalid source")
 	ErrInvalidImport      = errors.New("invalid import")
 	ErrImportNotFound     = errors.New("import not found")
+	ErrInvalidField       = errors.New("invalid field")
+	ErrPatternRequired    = errors.New("pattern is required")
+	ErrLeadNotFound       = errors.New("lead not found")
 )
