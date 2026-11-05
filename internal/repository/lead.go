@@ -21,7 +21,7 @@ func (r *LeadRepository) Create(ctx context.Context, lead model.Lead) (model.Lea
 	const q = `
 		INSERT INTO leads (customer_id, name, phone, email, status)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, customer_id, name, phone, email, status, created_at`
+		RETURNING id, customer_id, name, phone, email, status, bitrix_id, created_at`
 
 	var created model.Lead
 	err := r.db.GetContext(ctx, &created, q, lead.CustomerID, lead.Name, lead.Phone, lead.Email, lead.Status)
@@ -30,7 +30,7 @@ func (r *LeadRepository) Create(ctx context.Context, lead model.Lead) (model.Lea
 
 func (r *LeadRepository) GetByID(ctx context.Context, id int) (model.Lead, error) {
 	const q = `
-		SELECT id, customer_id, name, phone, email, status, created_at
+		SELECT id, customer_id, name, phone, email, status, bitrix_id, created_at
 		FROM leads
 		WHERE id = $1`
 
@@ -41,7 +41,7 @@ func (r *LeadRepository) GetByID(ctx context.Context, id int) (model.Lead, error
 
 func (r *LeadRepository) ListByCustomer(ctx context.Context, customerID int, status *string, afterCreatedAt *time.Time, afterID *int, limit int) ([]model.Lead, error) {
 	const q = `
-		SELECT id, customer_id, name, phone, email, status, created_at
+		SELECT id, customer_id, name, phone, email, status, bitrix_id, created_at
 		FROM leads
 		WHERE customer_id = $1
 		  AND ($2::text IS NULL OR status = $2)
@@ -63,7 +63,7 @@ func (r *LeadRepository) Update(ctx context.Context, lead model.Lead) (model.Lea
 		UPDATE leads
 		SET name = $1, phone = $2, email = $3, status = $4
 		WHERE id = $5
-		RETURNING id, customer_id, name, phone, email, status, created_at`
+		RETURNING id, customer_id, name, phone, email, status, bitrix_id, created_at`
 
 	var updated model.Lead
 	err := r.db.GetContext(ctx, &updated, q, lead.Name, lead.Phone, lead.Email, lead.Status, lead.ID)

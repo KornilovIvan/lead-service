@@ -41,7 +41,7 @@ func (r *QualificationRepository) ListByCustomer(ctx context.Context, customerID
 
 func (r *QualificationRepository) GetLeadByID(ctx context.Context, id int) (model.Lead, error) {
 	const q = `
-		SELECT id, customer_id, name, phone, email, status, created_at
+		SELECT id, customer_id, name, phone, email, status, bitrix_id, created_at
 		FROM leads
 		WHERE id = $1`
 

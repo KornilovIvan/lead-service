@@ -54,7 +54,7 @@ func insertLead(ctx context.Context, tx *sqlx.Tx, lead model.Lead) (model.Lead, 
 	const q = `
 		INSERT INTO leads (customer_id, name, phone, email, status)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, customer_id, name, phone, email, status, created_at`
+		RETURNING id, customer_id, name, phone, email, status, bitrix_id, created_at`
 
 	var created model.Lead
 	err := tx.GetContext(ctx, &created, q, lead.CustomerID, lead.Name, lead.Phone, lead.Email, lead.Status)
