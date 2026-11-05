@@ -11,3 +11,13 @@ type Lead struct {
 	Status     string    `db:"status" json:"status"`
 	CreatedAt  time.Time `db:"created_at" json:"created_at"`
 }
+
+type LeadCursor struct {
+	CreatedAt time.Time `json:"created_at"`
+	ID        int       `json:"id"`
+}
+
+type LeadPage struct {
+	Items []Lead      `json:"items"`
+	Next  *LeadCursor `json:"next"`
+}

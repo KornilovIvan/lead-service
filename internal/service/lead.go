@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"lead-service/internal/model"
 	"lead-service/internal/repository"
@@ -41,14 +42,31 @@ func (s *LeadService) Get(ctx context.Context, id int) (model.Lead, error) {
 	return lead, err
 }
 
-func (s *LeadService) List(ctx context.Context, customerID, limit, offset int, status *string) ([]model.Lead, error) {
+func (s *LeadService) List(ctx context.Context, customerID, limit int, status *string, afterCreatedAt *time.Time, afterID *int) (model.LeadPage, error) {
 	if customerID == 0 {
-		return nil, ErrCustomerIDRequired
+		return model.LeadPage{}, ErrCustomerIDRequired
+	}
+	if limit < 1 || limit > 100 {
+		return model.LeadPage{}, ErrInvalidLimit
 	}
 	if status != nil && *status != "new" && *status != "qualified" && *status != "rejected" {
-		return nil, ErrInvalidStatus
+		return model.LeadPage{}, ErrInvalidStatus
 	}
-	return s.repo.ListByCustomer(ctx, customerID, limit, offset, status)
+	if (afterCreatedAt == nil) != (afterID == nil) {
+		return model.LeadPage{}, ErrInvalidCursor
+	}
+
+	items, err := s.repo.ListByCustomer(ctx, customerID, status, afterCreatedAt, afterID, limit)
+	if err != nil {
+		return model.LeadPage{}, err
+	}
+
+	page := model.LeadPage{Items: items}
+	if len(items) == limit {
+		last := items[len(items)-1]
+		page.Next = &model.LeadCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	}
+	return page, nil
 }
 
 func validateLead(lead model.Lead) (model.Lead, error) {

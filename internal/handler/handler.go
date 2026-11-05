@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -126,17 +127,8 @@ func (h *Handler) listLeads(w http.ResponseWriter, r *http.Request) {
 	limit := 20
 	if raw := q.Get("limit"); raw != "" {
 		limit, err = strconv.Atoi(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid limit")
-			return
-		}
-	}
-
-	offset := 0
-	if raw := q.Get("offset"); raw != "" {
-		offset, err = strconv.Atoi(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid offset")
+		if err != nil || limit < 1 || limit > 100 {
+			writeError(w, http.StatusBadRequest, service.ErrInvalidLimit.Error())
 			return
 		}
 	}
@@ -146,8 +138,32 @@ func (h *Handler) listLeads(w http.ResponseWriter, r *http.Request) {
 		status = &raw
 	}
 
-	leads, err := h.leads.List(r.Context(), customerID, limit, offset, status)
-	if err == service.ErrCustomerIDRequired || err == service.ErrInvalidStatus {
+	rawAfterCreated := q.Get("after_created_at")
+	rawAfterID := q.Get("after_id")
+	if (rawAfterCreated == "") != (rawAfterID == "") {
+		writeError(w, http.StatusBadRequest, service.ErrInvalidCursor.Error())
+		return
+	}
+
+	var afterCreatedAt *time.Time
+	var afterID *int
+	if rawAfterCreated != "" {
+		t, err := time.Parse(time.RFC3339Nano, rawAfterCreated)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, service.ErrInvalidCursor.Error())
+			return
+		}
+		afterCreatedAt = &t
+		id, err := strconv.Atoi(rawAfterID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, service.ErrInvalidCursor.Error())
+			return
+		}
+		afterID = &id
+	}
+
+	page, err := h.leads.List(r.Context(), customerID, limit, status, afterCreatedAt, afterID)
+	if err == service.ErrCustomerIDRequired || err == service.ErrInvalidStatus || err == service.ErrInvalidCursor || err == service.ErrInvalidLimit {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -155,7 +171,7 @@ func (h *Handler) listLeads(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, leads)
+	writeJSON(w, http.StatusOK, page)
 }
 
 type errorBody struct {

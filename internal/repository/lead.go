@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
@@ -38,16 +39,21 @@ func (r *LeadRepository) GetByID(ctx context.Context, id int) (model.Lead, error
 	return lead, err
 }
 
-func (r *LeadRepository) ListByCustomer(ctx context.Context, customerID, limit, offset int, status *string) ([]model.Lead, error) {
+func (r *LeadRepository) ListByCustomer(ctx context.Context, customerID int, status *string, afterCreatedAt *time.Time, afterID *int, limit int) ([]model.Lead, error) {
 	const q = `
 		SELECT id, customer_id, name, phone, email, status, created_at
 		FROM leads
 		WHERE customer_id = $1
-		  AND ($4::text IS NULL OR status = $4)
+		  AND ($2::text IS NULL OR status = $2)
+		  AND (
+		        $3::timestamptz IS NULL
+		        OR created_at < $3
+		        OR (created_at = $3 AND id < $4)
+		      )
 		ORDER BY created_at DESC, id DESC
-		LIMIT $2 OFFSET $3`
+		LIMIT $5`
 
 	leads := make([]model.Lead, 0)
-	err := r.db.SelectContext(ctx, &leads, q, customerID, limit, offset, status)
+	err := r.db.SelectContext(ctx, &leads, q, customerID, status, afterCreatedAt, afterID, limit)
 	return leads, err
 }

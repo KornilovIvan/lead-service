@@ -1,0 +1,1 @@
+DROP INDEX leads_customer_created_id_idx;
