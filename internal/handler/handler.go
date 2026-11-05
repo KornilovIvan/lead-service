@@ -91,6 +91,36 @@ func (h *Handler) createLead(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) patchLead(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var patch model.LeadPatch
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	lead, err := h.leads.Update(r.Context(), id, patch)
+	switch err {
+	case nil:
+		writeJSON(w, http.StatusOK, lead)
+	case service.ErrInvalidStatus,
+		service.ErrPhoneRequired,
+		service.ErrInvalidPhone:
+		writeError(w, http.StatusBadRequest, err.Error())
+	case service.ErrNotFound:
+		writeError(w, http.StatusNotFound, "lead not found")
+	case service.ErrDuplicateLead:
+		writeError(w, http.StatusConflict, err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, err.Error())
+	}
+}
+
 func (h *Handler) getLead(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {

@@ -9,6 +9,7 @@ func (h *Handler) Register(r chi.Router) {
 	r.Post("/api/v1/leads", h.createLead)
 	r.Get("/api/v1/leads", h.listLeads)
 	r.Post("/api/v1/leads/{id}/qualify", h.qualifyLead)
+	r.Patch("/api/v1/leads/{id}", h.patchLead)
 	r.Get("/api/v1/leads/{id}", h.getLead)
 	r.Post("/api/v1/imports", h.createImport)
 	r.Get("/api/v1/imports/{id}", h.getImport)

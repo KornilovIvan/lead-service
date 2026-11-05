@@ -57,3 +57,15 @@ func (r *LeadRepository) ListByCustomer(ctx context.Context, customerID int, sta
 	err := r.db.SelectContext(ctx, &leads, q, customerID, status, afterCreatedAt, afterID, limit)
 	return leads, err
 }
+
+func (r *LeadRepository) Update(ctx context.Context, lead model.Lead) (model.Lead, error) {
+	const q = `
+		UPDATE leads
+		SET name = $1, phone = $2, email = $3, status = $4
+		WHERE id = $5
+		RETURNING id, customer_id, name, phone, email, status, created_at`
+
+	var updated model.Lead
+	err := r.db.GetContext(ctx, &updated, q, lead.Name, lead.Phone, lead.Email, lead.Status, lead.ID)
+	return updated, err
+}

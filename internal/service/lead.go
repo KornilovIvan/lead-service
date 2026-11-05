@@ -69,6 +69,43 @@ func (s *LeadService) List(ctx context.Context, customerID, limit int, status *s
 	return page, nil
 }
 
+func (s *LeadService) Update(ctx context.Context, id int, patch model.LeadPatch) (model.Lead, error) {
+	lead, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Lead{}, ErrNotFound
+	}
+	if err != nil {
+		return model.Lead{}, err
+	}
+
+	if patch.Name != nil {
+		lead.Name = *patch.Name
+	}
+	if patch.Phone != nil {
+		lead.Phone = patch.Phone
+	}
+	if patch.Email != nil {
+		lead.Email = patch.Email
+	}
+	if patch.Status != nil {
+		lead.Status = *patch.Status
+	}
+
+	lead, err = validateLead(lead)
+	if err != nil {
+		return model.Lead{}, err
+	}
+
+	updated, err := s.repo.Update(ctx, lead)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Lead{}, ErrNotFound
+	}
+	if isUniqueViolation(err) {
+		return model.Lead{}, ErrDuplicateLead
+	}
+	return updated, err
+}
+
 func validateLead(lead model.Lead) (model.Lead, error) {
 	phone, err := normalizePhone(lead.Phone)
 	if err != nil {

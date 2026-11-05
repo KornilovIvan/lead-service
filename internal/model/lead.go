@@ -21,3 +21,10 @@ type LeadPage struct {
 	Items []Lead      `json:"items"`
 	Next  *LeadCursor `json:"next"`
 }
+
+type LeadPatch struct {
+	Name   *string `json:"name"`
+	Phone  *string `json:"phone"`
+	Email  *string `json:"email"`
+	Status *string `json:"status"`
+}
