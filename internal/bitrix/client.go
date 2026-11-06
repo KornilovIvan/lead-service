@@ -13,8 +13,10 @@ import (
 	"time"
 )
 
+//go:generate mockgen -destination=mock/client.go -package=mock . Client
 type Client interface {
 	AddLead(ctx context.Context, originID, name, phone, email string) (bitrixID string, err error)
+	FindByOriginID(ctx context.Context, originID string) (bitrixID string, found bool, err error)
 }
 
 type HTTPError struct {
@@ -80,6 +82,73 @@ func (c *httpClient) AddLead(ctx context.Context, originID, name, phone, email s
 		return "", &HTTPError{Status: resp.StatusCode}
 	}
 	return strconv.FormatInt(parsed.Result, 10), nil
+}
+
+func (c *httpClient) FindByOriginID(ctx context.Context, originID string) (string, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	payload, err := json.Marshal(map[string]any{
+		"filter": map[string]string{"ORIGIN_ID": originID},
+	})
+	if err != nil {
+		return "", false, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/crm.lead.list.json", bytes.NewReader(payload))
+	if err != nil {
+		return "", false, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", false, err
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", false, &HTTPError{Status: resp.StatusCode}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", false, &HTTPError{Status: resp.StatusCode}
+	}
+
+	var parsed struct {
+		Result []struct {
+			ID json.RawMessage `json:"ID"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", false, &HTTPError{Status: resp.StatusCode}
+	}
+	if len(parsed.Result) == 0 {
+		return "", false, nil
+	}
+	id, err := bitrixIDString(parsed.Result[0].ID)
+	if err != nil {
+		return "", false, err
+	}
+	return id, true, nil
+}
+
+func bitrixIDString(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", fmt.Errorf("empty bitrix id")
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return "", err
+		}
+		return s, nil
+	}
+	var n int64
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return "", err
+	}
+	return strconv.FormatInt(n, 10), nil
 }
 
 func fields(originID, name, phone, email string) map[string]any {

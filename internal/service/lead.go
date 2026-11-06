@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -57,6 +59,44 @@ func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, 
 	}
 	created.BitrixID = &bitrixID
 	return created, nil
+}
+
+func (s *LeadService) Retry(ctx context.Context, id int) (model.Lead, error) {
+	lead, err := s.Get(ctx, id)
+	if err != nil {
+		return model.Lead{}, err
+	}
+
+	originID := strconv.Itoa(lead.ID)
+	bitrixID, found, err := s.bitrix.FindByOriginID(ctx, originID)
+	if err != nil {
+		var httpErr *bitrix.HTTPError
+		if errors.As(err, &httpErr) && httpErr.Status == http.StatusUnauthorized {
+			slog.Error("webhook revoked")
+			return model.Lead{}, ErrBitrix
+		}
+		return model.Lead{}, err
+	}
+	if !found {
+		phone := ""
+		if lead.Phone != nil {
+			phone = *lead.Phone
+		}
+		email := ""
+		if lead.Email != nil {
+			email = *lead.Email
+		}
+		bitrixID, err = s.bitrix.AddLead(ctx, originID, lead.Name, phone, email)
+		if err != nil {
+			return lead, nil
+		}
+	}
+
+	if err := s.repo.SetBitrixID(ctx, lead.ID, bitrixID); err != nil {
+		return model.Lead{}, err
+	}
+	lead.BitrixID = &bitrixID
+	return lead, nil
 }
 
 func (s *LeadService) Get(ctx context.Context, id int) (model.Lead, error) {

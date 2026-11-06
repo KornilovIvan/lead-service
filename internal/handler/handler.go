@@ -121,6 +121,29 @@ func (h *Handler) patchLead(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) retryLead(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	lead, err := h.leads.Retry(r.Context(), id)
+	if err == service.ErrNotFound {
+		writeError(w, http.StatusNotFound, "lead not found")
+		return
+	}
+	if err == service.ErrBitrix {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, lead)
+}
+
 func (h *Handler) getLead(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
