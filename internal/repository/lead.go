@@ -69,3 +69,9 @@ func (r *LeadRepository) Update(ctx context.Context, lead model.Lead) (model.Lea
 	err := r.db.GetContext(ctx, &updated, q, lead.Name, lead.Phone, lead.Email, lead.Status, lead.ID)
 	return updated, err
 }
+
+func (r *LeadRepository) SetBitrixID(ctx context.Context, id int, bitrixID string) error {
+	const q = `UPDATE leads SET bitrix_id = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, q, bitrixID, id)
+	return err
+}

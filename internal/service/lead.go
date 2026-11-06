@@ -4,18 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"time"
 
+	"lead-service/internal/bitrix"
 	"lead-service/internal/model"
 	"lead-service/internal/repository"
 )
 
 type LeadService struct {
-	repo *repository.LeadRepository
+	repo   *repository.LeadRepository
+	bitrix bitrix.Client
 }
 
-func NewLeadService(repo *repository.LeadRepository) *LeadService {
-	return &LeadService{repo: repo}
+func NewLeadService(repo *repository.LeadRepository, bitrixClient bitrix.Client) *LeadService {
+	return &LeadService{repo: repo, bitrix: bitrixClient}
 }
 
 func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, error) {
@@ -31,7 +34,29 @@ func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, 
 	if isUniqueViolation(err) {
 		return model.Lead{}, ErrDuplicateLead
 	}
-	return created, err
+	if err != nil {
+		return model.Lead{}, err
+	}
+
+	phone := ""
+	if created.Phone != nil {
+		phone = *created.Phone
+	}
+	email := ""
+	if created.Email != nil {
+		email = *created.Email
+	}
+
+	bitrixID, err := s.bitrix.AddLead(ctx, strconv.Itoa(created.ID), created.Name, phone, email)
+	if err != nil {
+		return created, nil
+	}
+
+	if err := s.repo.SetBitrixID(ctx, created.ID, bitrixID); err != nil {
+		return model.Lead{}, err
+	}
+	created.BitrixID = &bitrixID
+	return created, nil
 }
 
 func (s *LeadService) Get(ctx context.Context, id int) (model.Lead, error) {
