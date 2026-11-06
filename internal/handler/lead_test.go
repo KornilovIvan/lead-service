@@ -11,9 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jmoiron/sqlx"
-	"go.uber.org/mock/gomock"
 
-	"lead-service/internal/bitrix/mock"
 	"lead-service/internal/repository"
 	"lead-service/internal/service"
 	"lead-service/internal/testdb"
@@ -24,13 +22,8 @@ var phoneSeq atomic.Int64
 func TestCreateLead(t *testing.T) {
 	db := testdb.Open(t)
 	customerID := insertCustomer(t, db, "lead-create")
-	ctrl := gomock.NewController(t)
-	client := mock.NewMockClient(ctrl)
-	client.EXPECT().
-		AddLead(gomock.Any(), gomock.Any(), "Иван", gomock.Any(), "").
-		Return("15", nil)
 
-	rec := postJSON(t, newRouter(db, client), "/api/v1/leads", fmt.Sprintf(
+	rec := postJSON(t, newRouter(db), "/api/v1/leads", fmt.Sprintf(
 		`{"customer_id":%d,"name":"Иван","phone":"%s","status":"new"}`,
 		customerID, nextPhone(),
 	))
@@ -49,8 +42,15 @@ func TestCreateLead(t *testing.T) {
 	if lead.CustomerID != customerID {
 		t.Fatalf("customer_id %d", lead.CustomerID)
 	}
-	if lead.BitrixID == nil || *lead.BitrixID != "15" {
+	if lead.BitrixID != nil {
 		t.Fatalf("bitrix_id %v", lead.BitrixID)
+	}
+	var jobs int
+	if err := db.Get(&jobs, `SELECT count(*) FROM jobs WHERE lead_id = $1 AND status = 'queued'`, lead.ID); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 {
+		t.Fatalf("jobs %d", jobs)
 	}
 }
 
@@ -58,12 +58,9 @@ func TestCreateLeadDuplicatePhone(t *testing.T) {
 	db := testdb.Open(t)
 	customerID := insertCustomer(t, db, "lead-dup")
 	phone := nextPhone()
-	ctrl := gomock.NewController(t)
-	client := mock.NewMockClient(ctrl)
-	client.EXPECT().AddLead(gomock.Any(), gomock.Any(), gomock.Any(), phone, "").Return("16", nil)
 
 	body := fmt.Sprintf(`{"customer_id":%d,"name":"А","phone":"%s","status":"new"}`, customerID, phone)
-	router := newRouter(db, client)
+	router := newRouter(db)
 	first := postJSON(t, router, "/api/v1/leads", body)
 	if first.Code != http.StatusCreated {
 		t.Fatalf("first status %d, body %s", first.Code, first.Body.String())
@@ -77,10 +74,7 @@ func TestCreateLeadDuplicatePhone(t *testing.T) {
 func TestCreateLeadRequiresPhone(t *testing.T) {
 	db := testdb.Open(t)
 	customerID := insertCustomer(t, db, "lead-nophone")
-	ctrl := gomock.NewController(t)
-	client := mock.NewMockClient(ctrl)
-
-	rec := postJSON(t, newRouter(db, client), "/api/v1/leads", fmt.Sprintf(
+	rec := postJSON(t, newRouter(db), "/api/v1/leads", fmt.Sprintf(
 		`{"customer_id":%d,"name":"Без телефона","status":"new"}`,
 		customerID,
 	))
@@ -94,8 +88,7 @@ func TestCreateLeadRequiresPhone(t *testing.T) {
 
 func TestGetMissingLead(t *testing.T) {
 	db := testdb.Open(t)
-	ctrl := gomock.NewController(t)
-	rec := get(t, newRouter(db, mock.NewMockClient(ctrl)), "/api/v1/leads/99999")
+	rec := get(t, newRouter(db), "/api/v1/leads/99999")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -104,8 +97,8 @@ func TestGetMissingLead(t *testing.T) {
 	}
 }
 
-func newRouter(db *sqlx.DB, client *mock.MockClient) http.Handler {
-	h := New(nil, service.NewLeadService(repository.NewLeadRepository(db), client), nil, nil, nil)
+func newRouter(db *sqlx.DB) http.Handler {
+	h := New(nil, service.NewLeadService(repository.NewLeadRepository(db)), nil, nil, nil)
 	r := chi.NewRouter()
 	h.Register(r)
 	return r

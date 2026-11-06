@@ -84,6 +84,17 @@ func (c *httpClient) AddLead(ctx context.Context, originID, name, phone, email s
 	return strconv.FormatInt(parsed.Result, 10), nil
 }
 
+func FindOrAdd(ctx context.Context, c Client, originID, name, phone, email string) (string, error) {
+	id, found, err := c.FindByOriginID(ctx, originID)
+	if err != nil {
+		return "", err
+	}
+	if found {
+		return id, nil
+	}
+	return c.AddLead(ctx, originID, name, phone, email)
+}
+
 func (c *httpClient) FindByOriginID(ctx context.Context, originID string) (string, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()

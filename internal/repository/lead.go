@@ -18,14 +18,32 @@ func NewLeadRepository(db *sqlx.DB) *LeadRepository {
 }
 
 func (r *LeadRepository) Create(ctx context.Context, lead model.Lead) (model.Lead, error) {
-	const q = `
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return model.Lead{}, err
+	}
+	defer tx.Rollback()
+
+	const insertLead = `
 		INSERT INTO leads (customer_id, name, phone, email, status)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, customer_id, name, phone, email, status, bitrix_id, created_at`
 
 	var created model.Lead
-	err := r.db.GetContext(ctx, &created, q, lead.CustomerID, lead.Name, lead.Phone, lead.Email, lead.Status)
-	return created, err
+	if err := tx.GetContext(ctx, &created, insertLead, lead.CustomerID, lead.Name, lead.Phone, lead.Email, lead.Status); err != nil {
+		return model.Lead{}, err
+	}
+	if err := enqueueJob(ctx, tx, created.ID); err != nil {
+		return model.Lead{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.Lead{}, err
+	}
+	return created, nil
+}
+
+func (r *LeadRepository) Enqueue(ctx context.Context, leadID int) error {
+	return enqueueJob(ctx, r.db, leadID)
 }
 
 func (r *LeadRepository) GetByID(ctx context.Context, id int) (model.Lead, error) {
@@ -68,6 +86,14 @@ func (r *LeadRepository) Update(ctx context.Context, lead model.Lead) (model.Lea
 	var updated model.Lead
 	err := r.db.GetContext(ctx, &updated, q, lead.Name, lead.Phone, lead.Email, lead.Status, lead.ID)
 	return updated, err
+}
+
+func enqueueJob(ctx context.Context, exec sqlx.ExtContext, leadID int) error {
+	const q = `
+		INSERT INTO jobs (lead_id, status, run_at)
+		VALUES ($1, 'queued', now())`
+	_, err := exec.ExecContext(ctx, q, leadID)
+	return err
 }
 
 func (r *LeadRepository) SetBitrixID(ctx context.Context, id int, bitrixID string) error {

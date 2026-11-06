@@ -128,20 +128,17 @@ func (h *Handler) retryLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lead, err := h.leads.Retry(r.Context(), id)
-	if err == service.ErrNotFound {
+	err = h.leads.Retry(r.Context(), id)
+	switch err {
+	case nil:
+		writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
+	case service.ErrNotFound:
 		writeError(w, http.StatusNotFound, "lead not found")
-		return
-	}
-	if err == service.ErrBitrix {
-		writeError(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	if err != nil {
+	case service.ErrAlreadyQueued:
+		writeError(w, http.StatusConflict, err.Error())
+	default:
 		writeError(w, http.StatusInternalServerError, "internal error")
-		return
 	}
-	writeJSON(w, http.StatusOK, lead)
 }
 
 func (h *Handler) getLead(w http.ResponseWriter, r *http.Request) {

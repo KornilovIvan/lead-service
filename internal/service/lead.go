@@ -4,23 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
-	"net/http"
-	"strconv"
 	"time"
 
-	"lead-service/internal/bitrix"
 	"lead-service/internal/model"
 	"lead-service/internal/repository"
 )
 
 type LeadService struct {
-	repo   *repository.LeadRepository
-	bitrix bitrix.Client
+	repo *repository.LeadRepository
 }
 
-func NewLeadService(repo *repository.LeadRepository, bitrixClient bitrix.Client) *LeadService {
-	return &LeadService{repo: repo, bitrix: bitrixClient}
+func NewLeadService(repo *repository.LeadRepository) *LeadService {
+	return &LeadService{repo: repo}
 }
 
 func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, error) {
@@ -36,67 +31,18 @@ func (s *LeadService) Create(ctx context.Context, lead model.Lead) (model.Lead, 
 	if isUniqueViolation(err) {
 		return model.Lead{}, ErrDuplicateLead
 	}
-	if err != nil {
-		return model.Lead{}, err
-	}
-
-	phone := ""
-	if created.Phone != nil {
-		phone = *created.Phone
-	}
-	email := ""
-	if created.Email != nil {
-		email = *created.Email
-	}
-
-	bitrixID, err := s.bitrix.AddLead(ctx, strconv.Itoa(created.ID), created.Name, phone, email)
-	if err != nil {
-		return created, nil
-	}
-
-	if err := s.repo.SetBitrixID(ctx, created.ID, bitrixID); err != nil {
-		return model.Lead{}, err
-	}
-	created.BitrixID = &bitrixID
-	return created, nil
+	return created, err
 }
 
-func (s *LeadService) Retry(ctx context.Context, id int) (model.Lead, error) {
-	lead, err := s.Get(ctx, id)
-	if err != nil {
-		return model.Lead{}, err
+func (s *LeadService) Retry(ctx context.Context, id int) error {
+	if _, err := s.Get(ctx, id); err != nil {
+		return err
 	}
-
-	originID := strconv.Itoa(lead.ID)
-	bitrixID, found, err := s.bitrix.FindByOriginID(ctx, originID)
-	if err != nil {
-		var httpErr *bitrix.HTTPError
-		if errors.As(err, &httpErr) && httpErr.Status == http.StatusUnauthorized {
-			slog.Error("webhook revoked")
-			return model.Lead{}, ErrBitrix
-		}
-		return model.Lead{}, err
+	err := s.repo.Enqueue(ctx, id)
+	if isActiveJobConflict(err) {
+		return ErrAlreadyQueued
 	}
-	if !found {
-		phone := ""
-		if lead.Phone != nil {
-			phone = *lead.Phone
-		}
-		email := ""
-		if lead.Email != nil {
-			email = *lead.Email
-		}
-		bitrixID, err = s.bitrix.AddLead(ctx, originID, lead.Name, phone, email)
-		if err != nil {
-			return lead, nil
-		}
-	}
-
-	if err := s.repo.SetBitrixID(ctx, lead.ID, bitrixID); err != nil {
-		return model.Lead{}, err
-	}
-	lead.BitrixID = &bitrixID
-	return lead, nil
+	return err
 }
 
 func (s *LeadService) Get(ctx context.Context, id int) (model.Lead, error) {

@@ -21,7 +21,7 @@ var (
 	ErrSheetsURLRequired    = errors.New("sheets url is required")
 	ErrEndpointRequired     = errors.New("endpoint is required")
 	ErrDuplicateLead        = errors.New("duplicate lead")
-	ErrBitrix               = errors.New("bitrix error")
+	ErrAlreadyQueued        = errors.New("already queued")
 	ErrInvalidCursor        = errors.New("invalid cursor")
 	ErrInvalidLimit         = errors.New("invalid limit")
 )
