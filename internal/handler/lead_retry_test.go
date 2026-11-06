@@ -6,33 +6,22 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/jmoiron/sqlx"
 	"go.uber.org/mock/gomock"
 
 	"lead-service/internal/bitrix"
 	"lead-service/internal/bitrix/mock"
 	"lead-service/internal/repository"
 	"lead-service/internal/service"
+	"lead-service/internal/testdb"
 )
 
 func TestRetryBitrixUnauthorized(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://leads:leads@localhost:5432/leads_test?sslmode=disable"
-	}
-
-	db, err := sqlx.Connect("pgx", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
+	db := testdb.Open(t)
 
 	var customerID int
 	if err := db.Get(&customerID, `INSERT INTO customers (name) VALUES ('retry-401') RETURNING id`); err != nil {
