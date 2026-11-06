@@ -112,3 +112,27 @@ func (r *JobRepository) Fail(ctx context.Context, job Job) error {
 	}
 	return nil
 }
+
+// Defer puts a claimed job back into the queue with a run_at in the future.
+// It is a single guarded UPDATE: if the lock is no longer ours, nothing changes
+// and ErrJobLockLost is returned.
+func (r *JobRepository) Defer(ctx context.Context, job Job, backoff time.Duration) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE jobs
+		SET status = 'queued',
+		    run_at = now() + make_interval(secs => $3),
+		    locked_at = NULL
+		WHERE id = $1 AND status = 'in_progress' AND locked_at = $2`,
+		job.ID, job.LockedAt, int(backoff/time.Second))
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrJobLockLost
+	}
+	return nil
+}

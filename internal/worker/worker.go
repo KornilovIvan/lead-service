@@ -6,17 +6,23 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"lead-service/internal/bitrix"
+	"lead-service/internal/metrics"
 	"lead-service/internal/model"
 	"lead-service/internal/repository"
 )
+
+// retryBackoff is how long a transiently failed job waits before the next try.
+const retryBackoff = 30 * time.Second
 
 // JobStore is the set of queue operations the worker needs.
 type JobStore interface {
 	Claim(ctx context.Context) (repository.Job, error)
 	Complete(ctx context.Context, job repository.Job, bitrixID string) error
 	Fail(ctx context.Context, job repository.Job) error
+	Defer(ctx context.Context, job repository.Job, backoff time.Duration) error
 }
 
 // LeadStore loads the lead behind a claimed job.
@@ -96,8 +102,7 @@ func (w *Worker) process(ctx context.Context, job repository.Job) {
 		stringValue(lead.Email),
 	)
 	if err != nil {
-		w.log.Error("worker bitrix sync", "job_id", job.ID, "lead_id", lead.ID, "err", err)
-		w.fail(ctx, job)
+		w.handleBitrixError(ctx, job, lead.ID, err)
 		return
 	}
 
@@ -108,10 +113,28 @@ func (w *Worker) process(ctx context.Context, job repository.Job) {
 	w.log.Info("worker job done", "job_id", job.ID, "lead_id", lead.ID, "bitrix_id", bitrixID)
 }
 
+func (w *Worker) handleBitrixError(ctx context.Context, job repository.Job, leadID int, err error) {
+	switch classify(err) {
+	case actionRetry:
+		w.log.Warn("worker bitrix retry", "job_id", job.ID, "lead_id", leadID, "err", err)
+		if derr := w.jobs.Defer(ctx, job, retryBackoff); derr != nil {
+			w.log.Error("worker defer job", "job_id", job.ID, "lead_id", leadID, "err", derr)
+		}
+	case actionWebhookRevoked:
+		w.log.Error("webhook revoked", "job_id", job.ID, "lead_id", leadID, "err", err)
+		w.fail(ctx, job)
+	default:
+		w.log.Error("worker bitrix failed", "job_id", job.ID, "lead_id", leadID, "err", err)
+		w.fail(ctx, job)
+	}
+}
+
 func (w *Worker) fail(ctx context.Context, job repository.Job) {
 	if err := w.jobs.Fail(ctx, job); err != nil {
 		w.log.Error("worker fail job", "job_id", job.ID, "err", err)
+		return
 	}
+	metrics.SyncJobsFailedTotal.Inc()
 }
 
 func stringValue(v *string) string {

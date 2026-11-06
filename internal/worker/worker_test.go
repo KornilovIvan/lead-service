@@ -1,18 +1,26 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"go.uber.org/mock/gomock"
 
+	"lead-service/internal/bitrix"
 	"lead-service/internal/bitrix/mock"
+	"lead-service/internal/metrics"
 	"lead-service/internal/model"
 	"lead-service/internal/repository"
 )
@@ -22,10 +30,16 @@ func discardLogger() *slog.Logger {
 }
 
 type fakeJobs struct {
-	job       repository.Job
-	claimErr  error
+	job         repository.Job
+	claimErr    error
+	completeErr error
+	failErr     error
+	deferErr    error
+
 	completed bool
 	failed    bool
+	deferred  bool
+	backoff   time.Duration
 	bitrixID  string
 }
 
@@ -40,13 +54,28 @@ func (f *fakeJobs) Claim(context.Context) (repository.Job, error) {
 }
 
 func (f *fakeJobs) Complete(_ context.Context, _ repository.Job, bitrixID string) error {
+	if f.completeErr != nil {
+		return f.completeErr
+	}
 	f.completed = true
 	f.bitrixID = bitrixID
 	return nil
 }
 
 func (f *fakeJobs) Fail(context.Context, repository.Job) error {
+	if f.failErr != nil {
+		return f.failErr
+	}
 	f.failed = true
+	return nil
+}
+
+func (f *fakeJobs) Defer(_ context.Context, _ repository.Job, backoff time.Duration) error {
+	if f.deferErr != nil {
+		return f.deferErr
+	}
+	f.deferred = true
+	f.backoff = backoff
 	return nil
 }
 
@@ -161,6 +190,94 @@ func TestRunOnceClaimsError(t *testing.T) {
 	}
 }
 
+func TestClassifyErrors(t *testing.T) {
+	tests := []struct {
+		name         string
+		err          error
+		wantFailed   bool
+		wantDeferred bool
+		wantRevoked  bool
+	}{
+		{"408", &bitrix.HTTPError{Status: http.StatusRequestTimeout}, false, true, false},
+		{"429", &bitrix.HTTPError{Status: http.StatusTooManyRequests}, false, true, false},
+		{"400", &bitrix.HTTPError{Status: http.StatusBadRequest}, true, false, false},
+		{"422", &bitrix.HTTPError{Status: http.StatusUnprocessableEntity}, true, false, false},
+		{"401", &bitrix.HTTPError{Status: http.StatusUnauthorized}, true, false, true},
+		{"timeout", context.DeadlineExceeded, false, true, false},
+		{"network", &net.DNSError{Err: "no such host", Name: "bitrix"}, false, true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := testutil.ToFloat64(metrics.SyncJobsFailedTotal)
+
+			ctrl := gomock.NewController(t)
+			client := mock.NewMockClient(ctrl)
+			client.EXPECT().FindByOriginID(gomock.Any(), "7").Return("", false, tt.err)
+
+			jobs := &fakeJobs{job: repository.Job{ID: 10, LeadID: 7}}
+			leads := &fakeLeads{lead: model.Lead{ID: 7, Name: "Иван", Phone: phone("79001234567")}}
+			var logs bytes.Buffer
+			w := New(jobs, leads, client, slog.New(slog.NewTextHandler(&logs, nil)))
+
+			if _, err := w.RunOnce(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			if jobs.failed != tt.wantFailed {
+				t.Fatalf("failed = %v, want %v", jobs.failed, tt.wantFailed)
+			}
+			if jobs.deferred != tt.wantDeferred {
+				t.Fatalf("deferred = %v, want %v", jobs.deferred, tt.wantDeferred)
+			}
+			if jobs.completed {
+				t.Fatal("job must not be completed")
+			}
+			if tt.wantDeferred && jobs.backoff != retryBackoff {
+				t.Fatalf("backoff = %v, want %v", jobs.backoff, retryBackoff)
+			}
+			if got := strings.Contains(logs.String(), "webhook revoked"); got != tt.wantRevoked {
+				t.Fatalf("webhook revoked log = %v, want %v; logs: %s", got, tt.wantRevoked, logs.String())
+			}
+
+			wantDelta := 0.0
+			if tt.wantFailed {
+				wantDelta = 1
+			}
+			if got := testutil.ToFloat64(metrics.SyncJobsFailedTotal) - before; got != wantDelta {
+				t.Fatalf("failed metric delta = %v, want %v", got, wantDelta)
+			}
+		})
+	}
+}
+
+func TestFailedMetricNotIncrementedWhenLockLost(t *testing.T) {
+	before := testutil.ToFloat64(metrics.SyncJobsFailedTotal)
+
+	ctrl := gomock.NewController(t)
+	client := mock.NewMockClient(ctrl)
+	client.EXPECT().
+		FindByOriginID(gomock.Any(), "7").
+		Return("", false, &bitrix.HTTPError{Status: http.StatusUnprocessableEntity})
+
+	jobs := &fakeJobs{
+		job:     repository.Job{ID: 10, LeadID: 7},
+		failErr: repository.ErrJobLockLost,
+	}
+	leads := &fakeLeads{lead: model.Lead{ID: 7, Name: "Иван", Phone: phone("79001234567")}}
+	w := New(jobs, leads, client, discardLogger())
+
+	if _, err := w.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if jobs.failed {
+		t.Fatal("fake must report a lost lock, not a failed transition")
+	}
+	if got := testutil.ToFloat64(metrics.SyncJobsFailedTotal) - before; got != 0 {
+		t.Fatalf("failed metric delta = %v, want 0", got)
+	}
+}
+
 type countingHandler struct {
 	mu   sync.Mutex
 	idle int
@@ -200,6 +317,9 @@ func (f *idlingJobs) Claim(context.Context) (repository.Job, error) {
 
 func (f *idlingJobs) Complete(context.Context, repository.Job, string) error { return nil }
 func (f *idlingJobs) Fail(context.Context, repository.Job) error             { return nil }
+func (f *idlingJobs) Defer(context.Context, repository.Job, time.Duration) error {
+	return nil
+}
 
 func TestRunLogsIdleOncePerIdlePeriod(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

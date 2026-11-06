@@ -1,9 +1,15 @@
 package handler
 
-import "github.com/go-chi/chi/v5"
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
 
 func (h *Handler) Register(r chi.Router) {
 	r.Get("/health", h.health)
+	r.Method(http.MethodGet, "/metrics", promhttp.Handler())
 	r.Post("/api/v1/customers", h.createCustomer)
 	r.Get("/api/v1/customers/{id}", h.getCustomer)
 	r.Post("/api/v1/leads", h.createLead)
