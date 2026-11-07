@@ -50,7 +50,16 @@ func (s *LeadService) Get(ctx context.Context, id int) (model.Lead, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Lead{}, ErrNotFound
 	}
-	return lead, err
+	if err != nil {
+		return model.Lead{}, err
+	}
+
+	latest, err := s.repo.LatestJobStatus(ctx, id)
+	if err != nil {
+		return model.Lead{}, err
+	}
+	lead.CRMLabel = CRMLabel(lead.BitrixID, latest)
+	return lead, nil
 }
 
 func (s *LeadService) List(ctx context.Context, customerID, limit int, status *string, afterCreatedAt *time.Time, afterID *int) (model.LeadPage, error) {
@@ -70,6 +79,24 @@ func (s *LeadService) List(ctx context.Context, customerID, limit int, status *s
 	items, err := s.repo.ListByCustomer(ctx, customerID, status, afterCreatedAt, afterID, limit)
 	if err != nil {
 		return model.LeadPage{}, err
+	}
+
+	if len(items) > 0 {
+		ids := make([]int, len(items))
+		for i := range items {
+			ids[i] = items[i].ID
+		}
+		latest, err := s.repo.LatestJobStatuses(ctx, ids)
+		if err != nil {
+			return model.LeadPage{}, err
+		}
+		for i := range items {
+			var latestStatus *string
+			if st, ok := latest[items[i].ID]; ok {
+				latestStatus = &st
+			}
+			items[i].CRMLabel = CRMLabel(items[i].BitrixID, latestStatus)
+		}
 	}
 
 	page := model.LeadPage{Items: items}

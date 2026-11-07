@@ -11,6 +11,7 @@ type Lead struct {
 	Status     string    `db:"status" json:"status"`
 	BitrixID   *string   `db:"bitrix_id" json:"bitrix_id"`
 	CreatedAt  time.Time `db:"created_at" json:"created_at"`
+	CRMLabel   string    `db:"-" json:"crm_label,omitempty"`
 }
 
 type LeadCursor struct {

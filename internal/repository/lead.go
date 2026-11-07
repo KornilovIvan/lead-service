@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -100,4 +102,59 @@ func (r *LeadRepository) SetBitrixID(ctx context.Context, id int, bitrixID strin
 	const q = `UPDATE leads SET bitrix_id = $1 WHERE id = $2`
 	_, err := r.db.ExecContext(ctx, q, bitrixID, id)
 	return err
+}
+
+// LatestJobStatus returns the status of the job with the highest id for the
+// lead. No jobs means (nil, nil).
+func (r *LeadRepository) LatestJobStatus(ctx context.Context, leadID int) (*string, error) {
+	const q = `
+		SELECT status
+		FROM jobs
+		WHERE lead_id = $1
+		ORDER BY id DESC
+		LIMIT 1`
+
+	var status string
+	err := r.db.GetContext(ctx, &status, q, leadID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
+// LatestJobStatuses returns the status of the highest-id job per lead. Leads
+// without jobs are simply absent from the map.
+func (r *LeadRepository) LatestJobStatuses(ctx context.Context, leadIDs []int) (map[int]string, error) {
+	out := make(map[int]string, len(leadIDs))
+	if len(leadIDs) == 0 {
+		return out, nil
+	}
+
+	q, args, err := sqlx.In(`
+		SELECT DISTINCT ON (lead_id) lead_id, status
+		FROM jobs
+		WHERE lead_id IN (?)
+		ORDER BY lead_id, id DESC`, leadIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.QueryxContext(ctx, r.db.Rebind(q), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var leadID int
+		var status string
+		if err := rows.Scan(&leadID, &status); err != nil {
+			return nil, err
+		}
+		out[leadID] = status
+	}
+	return out, rows.Err()
 }
