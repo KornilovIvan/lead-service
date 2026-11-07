@@ -15,9 +15,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+	"github.com/redis/go-redis/v9"
 
 	"lead-service/internal/bitrix"
 	"lead-service/internal/handler"
+	"lead-service/internal/ratelimit"
 	"lead-service/internal/repository"
 	"lead-service/internal/service"
 	"lead-service/internal/worker"
@@ -57,7 +59,35 @@ func main() {
 	}
 	bitrixClient := bitrix.New(bitrixBaseURL, durationEnv("BITRIX_TIMEOUT", 5*time.Second))
 
-	w := worker.New(jobRepo, leadRepo, bitrixClient, logger)
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		log.Fatal("REDIS_URL is required")
+	}
+	redisOpts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rdb := redis.NewClient(redisOpts)
+	defer rdb.Close()
+
+	pingCtx, cancelPing := context.WithTimeout(ctx, 2*time.Second)
+	err = rdb.Ping(pingCtx).Err()
+	cancelPing()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	bitrixLimit := intEnv("BITRIX_LIMIT", 2)
+	if bitrixLimit < 1 {
+		log.Fatal("BITRIX_LIMIT must be positive")
+	}
+	windowSeconds := intEnv("BITRIX_WINDOW_SECONDS", 1)
+	if windowSeconds < 1 {
+		log.Fatal("BITRIX_WINDOW_SECONDS must be positive")
+	}
+	limiter := ratelimit.New(rdb, bitrixLimit, ratelimit.WithWindow(time.Duration(windowSeconds)*time.Second))
+
+	w := worker.New(jobRepo, leadRepo, bitrixClient, logger, worker.WithLimiter(limiter))
 	concurrency := intEnv("WORKER_CONCURRENCY", 4)
 	for i := 0; i < concurrency; i++ {
 		go w.Run(ctx)

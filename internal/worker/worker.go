@@ -30,18 +30,46 @@ type LeadStore interface {
 	GetByID(ctx context.Context, id int) (model.Lead, error)
 }
 
-type Worker struct {
-	jobs   JobStore
-	leads  LeadStore
-	client bitrix.Client
-	log    *slog.Logger
+// RateLimiter reports whether one more Bitrix webhook call fits into the
+// current window.
+type RateLimiter interface {
+	Allow(ctx context.Context) (bool, error)
 }
 
-func New(jobs JobStore, leads LeadStore, client bitrix.Client, logger *slog.Logger) *Worker {
+type allowAll struct{}
+
+func (allowAll) Allow(context.Context) (bool, error) { return true, nil }
+
+type Worker struct {
+	jobs    JobStore
+	leads   LeadStore
+	client  bitrix.Client
+	limiter RateLimiter
+	log     *slog.Logger
+}
+
+// Option customises a Worker.
+type Option func(*Worker)
+
+// WithLimiter installs a shared rate limiter. Without it the worker allows
+// every call, which is only meant for tests and local wiring.
+func WithLimiter(limiter RateLimiter) Option {
+	return func(w *Worker) {
+		if limiter != nil {
+			w.limiter = limiter
+		}
+	}
+}
+
+func New(jobs JobStore, leads LeadStore, client bitrix.Client, logger *slog.Logger, opts ...Option) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Worker{jobs: jobs, leads: leads, client: client, log: logger}
+	w := &Worker{jobs: jobs, leads: leads, client: client, limiter: allowAll{}, log: logger}
+	for _, opt := range opts {
+		opt(w)
+	}
+	return w
 }
 
 // Run claims jobs until ctx is cancelled. There is deliberately no poll
@@ -86,6 +114,18 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 }
 
 func (w *Worker) process(ctx context.Context, job repository.Job) {
+	allowed, err := w.limiter.Allow(ctx)
+	if err != nil {
+		w.log.Error("worker rate limiter", "job_id", job.ID, "lead_id", job.LeadID, "err", err)
+		w.deferJob(ctx, job)
+		return
+	}
+	if !allowed {
+		w.log.Warn("worker bitrix rate limited", "job_id", job.ID, "lead_id", job.LeadID)
+		w.deferJob(ctx, job)
+		return
+	}
+
 	lead, err := w.leads.GetByID(ctx, job.LeadID)
 	if err != nil {
 		w.log.Error("worker load lead", "job_id", job.ID, "lead_id", job.LeadID, "err", err)
@@ -117,15 +157,21 @@ func (w *Worker) handleBitrixError(ctx context.Context, job repository.Job, lead
 	switch classify(err) {
 	case actionRetry:
 		w.log.Warn("worker bitrix retry", "job_id", job.ID, "lead_id", leadID, "err", err)
-		if derr := w.jobs.Defer(ctx, job, retryBackoff); derr != nil {
-			w.log.Error("worker defer job", "job_id", job.ID, "lead_id", leadID, "err", derr)
-		}
+		w.deferJob(ctx, job)
 	case actionWebhookRevoked:
 		w.log.Error("webhook revoked", "job_id", job.ID, "lead_id", leadID, "err", err)
 		w.fail(ctx, job)
 	default:
 		w.log.Error("worker bitrix failed", "job_id", job.ID, "lead_id", leadID, "err", err)
 		w.fail(ctx, job)
+	}
+}
+
+// deferJob puts the job back into the queue with a fixed 30s pause. The
+// worker itself never sleeps, so the goroutine is free to take other jobs.
+func (w *Worker) deferJob(ctx context.Context, job repository.Job) {
+	if err := w.jobs.Defer(ctx, job, retryBackoff); err != nil {
+		w.log.Error("worker defer job", "job_id", job.ID, "err", err)
 	}
 }
 

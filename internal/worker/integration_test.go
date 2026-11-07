@@ -15,11 +15,13 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/mock/gomock"
 
 	"lead-service/internal/bitrix"
 	"lead-service/internal/bitrix/mock"
 	"lead-service/internal/metrics"
+	"lead-service/internal/ratelimit"
 	"lead-service/internal/repository"
 	"lead-service/internal/testdb"
 )
@@ -216,6 +218,45 @@ func TestUnauthorizedFailsAndLogsWebhookRevoked(t *testing.T) {
 	}
 }
 
+func TestRateLimitedJobIsDeferredInDB(t *testing.T) {
+	db := openWorkerTestDB(t)
+	ctx := context.Background()
+	job, _ := insertClaimedJob(t, db)
+
+	ctrl := gomock.NewController(t)
+	// No expectations: Bitrix must not be called when there is no slot.
+	client := mock.NewMockClient(ctrl)
+
+	w := New(
+		seededJobs{JobRepository: repository.NewJobRepository(db), job: job},
+		repository.NewLeadRepository(db),
+		client,
+		discardLogger(),
+		WithLimiter(fakeLimiter{allowed: false}),
+	)
+	if _, err := w.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var status string
+	var lockedAtIsNull bool
+	var seconds float64
+	if err := db.QueryRowContext(ctx, `
+		SELECT status, locked_at IS NULL, EXTRACT(EPOCH FROM (run_at - now()))::float8
+		FROM jobs WHERE id = $1`, job.ID).Scan(&status, &lockedAtIsNull, &seconds); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" {
+		t.Fatalf("status = %q, want queued", status)
+	}
+	if !lockedAtIsNull {
+		t.Fatal("locked_at must be NULL after defer")
+	}
+	if seconds < 20 {
+		t.Fatalf("run_at in %.1fs, want >= 20s", seconds)
+	}
+}
+
 func TestWorkerDoesNotWriteResultWhenLockChanged(t *testing.T) {
 	db := openWorkerTestDB(t)
 	ctx := context.Background()
@@ -261,5 +302,146 @@ func TestWorkerDoesNotWriteResultWhenLockChanged(t *testing.T) {
 	}
 	if bitrixID != nil {
 		t.Fatalf("bitrix_id = %q, want NULL after rollback", *bitrixID)
+	}
+}
+
+func TestThirdJobWithLimitTwoIsDeferredInDB(t *testing.T) {
+	db := openWorkerTestDB(t)
+	ctx := context.Background()
+
+	ctrl := gomock.NewController(t)
+	client := mock.NewMockClient(ctrl)
+	// Only two jobs reach Bitrix; the third is stopped by the limiter.
+	client.EXPECT().FindByOriginID(gomock.Any(), gomock.Any()).Times(2).Return("", false, nil)
+	client.EXPECT().
+		AddLead(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Times(2).
+		Return("555", nil)
+
+	limiter := &countingLimiter{limit: 2}
+	jobRepo := repository.NewJobRepository(db)
+	leadRepo := repository.NewLeadRepository(db)
+
+	var jobs [3]repository.Job
+	var leadIDs [3]int
+	for i := range jobs {
+		jobs[i], leadIDs[i] = insertClaimedJob(t, db)
+	}
+
+	for i := 0; i < 2; i++ {
+		w := New(
+			seededJobs{JobRepository: jobRepo, job: jobs[i]},
+			leadRepo,
+			client,
+			discardLogger(),
+			WithLimiter(limiter),
+		)
+		if _, err := w.RunOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var status string
+		if err := db.GetContext(ctx, &status,
+			`SELECT status FROM jobs WHERE id = $1`, jobs[i].ID); err != nil {
+			t.Fatal(err)
+		}
+		if status != "done" {
+			t.Fatalf("job %d status = %q, want done", jobs[i].ID, status)
+		}
+	}
+
+	w := New(
+		seededJobs{JobRepository: jobRepo, job: jobs[2]},
+		leadRepo,
+		client,
+		discardLogger(),
+		WithLimiter(limiter),
+	)
+	if _, err := w.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var status string
+	var lockedAtIsNull bool
+	var seconds float64
+	if err := db.QueryRowContext(ctx, `
+		SELECT status, locked_at IS NULL, EXTRACT(EPOCH FROM (run_at - now()))::float8
+		FROM jobs WHERE id = $1`, jobs[2].ID).Scan(&status, &lockedAtIsNull, &seconds); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" {
+		t.Fatalf("third job status = %q, want queued", status)
+	}
+	if !lockedAtIsNull {
+		t.Fatal("third job locked_at must be NULL")
+	}
+	if seconds < 20 {
+		t.Fatalf("third job run_at in %.1fs, want >= 20s", seconds)
+	}
+
+	var bitrixID *string
+	if err := db.GetContext(ctx, &bitrixID,
+		`SELECT bitrix_id FROM leads WHERE id = $1`, leadIDs[2]); err != nil {
+		t.Fatal(err)
+	}
+	if bitrixID != nil {
+		t.Fatalf("third lead bitrix_id = %q, want NULL", *bitrixID)
+	}
+}
+
+func TestRedisErrorDefersJob(t *testing.T) {
+	db := openWorkerTestDB(t)
+	ctx := context.Background()
+	job, leadID := insertClaimedJob(t, db)
+
+	// A valid URL syntax with a dead port: Allow returns a connection error.
+	rdb := redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  200 * time.Millisecond,
+		ReadTimeout:  200 * time.Millisecond,
+		WriteTimeout: 200 * time.Millisecond,
+		MaxRetries:   -1,
+	})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	ctrl := gomock.NewController(t)
+	// No expectations: Bitrix must not be called when Redis is unavailable.
+	client := mock.NewMockClient(ctrl)
+
+	w := New(
+		seededJobs{JobRepository: repository.NewJobRepository(db), job: job},
+		repository.NewLeadRepository(db),
+		client,
+		discardLogger(),
+		WithLimiter(ratelimit.New(rdb, 2)),
+	)
+	if _, err := w.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var status string
+	var lockedAtIsNull bool
+	var seconds float64
+	if err := db.QueryRowContext(ctx, `
+		SELECT status, locked_at IS NULL, EXTRACT(EPOCH FROM (run_at - now()))::float8
+		FROM jobs WHERE id = $1`, job.ID).Scan(&status, &lockedAtIsNull, &seconds); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" {
+		t.Fatalf("status = %q, want queued", status)
+	}
+	if !lockedAtIsNull {
+		t.Fatal("locked_at must be NULL after defer")
+	}
+	if seconds < 20 {
+		t.Fatalf("run_at in %.1fs, want >= 20s", seconds)
+	}
+
+	var bitrixID *string
+	if err := db.GetContext(ctx, &bitrixID,
+		`SELECT bitrix_id FROM leads WHERE id = $1`, leadID); err != nil {
+		t.Fatal(err)
+	}
+	if bitrixID != nil {
+		t.Fatalf("bitrix_id = %q, want NULL", *bitrixID)
 	}
 }

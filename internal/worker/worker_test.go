@@ -88,6 +88,30 @@ func (f *fakeLeads) GetByID(context.Context, int) (model.Lead, error) {
 	return f.lead, f.err
 }
 
+type fakeLimiter struct {
+	allowed bool
+	err     error
+}
+
+func (f fakeLimiter) Allow(context.Context) (bool, error) {
+	return f.allowed, f.err
+}
+
+// countingLimiter mimics the Redis counter: the first limit calls are
+// allowed, the next ones are rejected.
+type countingLimiter struct {
+	mu    sync.Mutex
+	calls int
+	limit int
+}
+
+func (l *countingLimiter) Allow(context.Context) (bool, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls++
+	return l.calls <= l.limit, nil
+}
+
 func phone(v string) *string { return &v }
 
 func TestRunOnceIdle(t *testing.T) {
@@ -275,6 +299,90 @@ func TestFailedMetricNotIncrementedWhenLockLost(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(metrics.SyncJobsFailedTotal) - before; got != 0 {
 		t.Fatalf("failed metric delta = %v, want 0", got)
+	}
+}
+
+func TestRateLimitedJobIsDeferred(t *testing.T) {
+	before := testutil.ToFloat64(metrics.SyncJobsFailedTotal)
+
+	ctrl := gomock.NewController(t)
+	// No expectations: Bitrix must not be called when there is no slot.
+	client := mock.NewMockClient(ctrl)
+
+	jobs := &fakeJobs{job: repository.Job{ID: 10, LeadID: 7}}
+	leads := &fakeLeads{lead: model.Lead{ID: 7, Name: "Иван", Phone: phone("79001234567")}}
+
+	w := New(jobs, leads, client, discardLogger(), WithLimiter(fakeLimiter{allowed: false}))
+	processed, err := w.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed {
+		t.Fatal("expected job to be processed")
+	}
+	if !jobs.deferred {
+		t.Fatal("job must be deferred")
+	}
+	if jobs.backoff != retryBackoff {
+		t.Fatalf("backoff = %v, want %v", jobs.backoff, retryBackoff)
+	}
+	if jobs.completed || jobs.failed {
+		t.Fatalf("completed=%v failed=%v, want neither", jobs.completed, jobs.failed)
+	}
+	if got := testutil.ToFloat64(metrics.SyncJobsFailedTotal) - before; got != 0 {
+		t.Fatalf("failed metric delta = %v, want 0", got)
+	}
+}
+
+func TestRateLimiterErrorDefersJob(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	// No expectations: Bitrix must not be called when the limiter is down.
+	client := mock.NewMockClient(ctrl)
+
+	jobs := &fakeJobs{job: repository.Job{ID: 10, LeadID: 7}}
+	leads := &fakeLeads{lead: model.Lead{ID: 7, Name: "Иван", Phone: phone("79001234567")}}
+
+	w := New(jobs, leads, client, discardLogger(),
+		WithLimiter(fakeLimiter{err: errors.New("redis down")}))
+	if _, err := w.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !jobs.deferred {
+		t.Fatal("job must be deferred when Redis is unavailable")
+	}
+	if jobs.failed || jobs.completed {
+		t.Fatalf("failed=%v completed=%v, want neither", jobs.failed, jobs.completed)
+	}
+}
+
+func TestThirdCallWithLimitTwoIsDeferred(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	client := mock.NewMockClient(ctrl)
+	// Only the first two jobs reach Bitrix; the third is stopped by the limiter.
+	client.EXPECT().FindByOriginID(gomock.Any(), "7").Times(2).Return("", false, nil)
+	client.EXPECT().AddLead(gomock.Any(), "7", "Иван", "79001234567", "").Times(2).Return("555", nil)
+
+	jobs := &fakeJobs{job: repository.Job{ID: 10, LeadID: 7}}
+	leads := &fakeLeads{lead: model.Lead{ID: 7, Name: "Иван", Phone: phone("79001234567")}}
+	w := New(jobs, leads, client, discardLogger(), WithLimiter(&countingLimiter{limit: 2}))
+
+	for i := 0; i < 2; i++ {
+		if _, err := w.RunOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if jobs.deferred {
+		t.Fatal("first two calls must not be deferred")
+	}
+
+	if _, err := w.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !jobs.deferred {
+		t.Fatal("third call must be deferred")
+	}
+	if jobs.backoff != retryBackoff {
+		t.Fatalf("backoff = %v, want %v", jobs.backoff, retryBackoff)
 	}
 }
 
