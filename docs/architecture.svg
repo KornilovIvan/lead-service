@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="760" viewBox="0 0 1300 760">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a5568"/>
+    </marker>
+    <style>
+      .group { fill: none; stroke-width: 1.6; stroke-dasharray: 7 5; }
+      .group-label { font-family: Helvetica, Arial, sans-serif; font-size: 14px; font-weight: bold; fill: #4a5568; }
+      .label { font-family: Helvetica, Arial, sans-serif; font-size: 14px; fill: #1a202c; }
+      .sub { font-family: Helvetica, Arial, sans-serif; font-size: 12px; fill: #4a5568; }
+      .edge { stroke: #4a5568; stroke-width: 1.6; fill: none; }
+      .edge-label { font-family: Helvetica, Arial, sans-serif; font-size: 12px; fill: #4a5568;
+                    paint-order: stroke; stroke: #ffffff; stroke-width: 5px; }
+    </style>
+  </defs>
+
+  <rect width="1300" height="760" fill="#ffffff"/>
+
+  <!-- Клиенты -->
+  <rect class="group" x="40" y="60" width="200" height="290" rx="12" stroke="#a0aec0"/>
+  <text class="group-label" x="54" y="86">Клиенты и мониторинг</text>
+
+  <rect x="60" y="110" width="160" height="55" rx="10" fill="#e9d8fd" stroke="#6b46c1" stroke-width="1.5"/>
+  <text class="label" x="140" y="142" text-anchor="middle" dominant-baseline="middle">Prometheus</text>
+
+  <rect x="70" y="225" width="140" height="60" rx="10" fill="#edf2f7" stroke="#4a5568" stroke-width="1.5"/>
+  <text class="label" x="140" y="255" text-anchor="middle" dominant-baseline="middle">HTTP-клиент</text>
+
+  <!-- lead-service -->
+  <rect class="group" x="300" y="100" width="320" height="480" rx="12" stroke="#3182ce"/>
+  <text class="group-label" x="314" y="126">lead-service</text>
+
+  <rect x="350" y="150" width="220" height="80" rx="10" fill="#bee3f8" stroke="#2b6cb0" stroke-width="1.5"/>
+  <text class="label" x="460" y="180" text-anchor="middle" dominant-baseline="middle">HTTP API</text>
+  <text class="sub" x="460" y="202" text-anchor="middle" dominant-baseline="middle">handler + service</text>
+
+  <rect x="350" y="285" width="220" height="70" rx="10" fill="#fefcbf" stroke="#b7791f" stroke-width="1.5"/>
+  <text class="label" x="460" y="312" text-anchor="middle" dominant-baseline="middle">Reaper</text>
+  <text class="sub" x="460" y="334" text-anchor="middle" dominant-baseline="middle">REAPER_EVERY</text>
+
+  <rect x="350" y="420" width="220" height="80" rx="10" fill="#c6f6d5" stroke="#2f855a" stroke-width="1.5"/>
+  <text class="label" x="460" y="450" text-anchor="middle" dominant-baseline="middle">Worker pool</text>
+  <text class="sub" x="460" y="472" text-anchor="middle" dominant-baseline="middle">WORKER_CONCURRENCY</text>
+
+  <!-- Хранилища -->
+  <rect class="group" x="730" y="240" width="210" height="300" rx="12" stroke="#a0aec0"/>
+  <text class="group-label" x="744" y="266">Хранилища</text>
+
+  <g>
+    <path d="M 770 310 L 770 370 A 65 10 0 0 0 900 370 L 900 310 Z" fill="#e2e8f0" stroke="#4a5568" stroke-width="1.5"/>
+    <ellipse cx="835" cy="310" rx="65" ry="10" fill="#e2e8f0" stroke="#4a5568" stroke-width="1.5"/>
+    <text class="label" x="835" y="342" text-anchor="middle" dominant-baseline="middle">PostgreSQL</text>
+    <text class="sub" x="835" y="362" text-anchor="middle" dominant-baseline="middle">customers, leads, jobs</text>
+  </g>
+
+  <g>
+    <path d="M 770 440 L 770 500 A 65 10 0 0 0 900 500 L 900 440 Z" fill="#fed7d7" stroke="#4a5568" stroke-width="1.5"/>
+    <ellipse cx="835" cy="440" rx="65" ry="10" fill="#fed7d7" stroke="#4a5568" stroke-width="1.5"/>
+    <text class="label" x="835" y="468" text-anchor="middle" dominant-baseline="middle">Redis</text>
+    <text class="sub" x="835" y="488" text-anchor="middle" dominant-baseline="middle">bitrix:webhook</text>
+  </g>
+
+  <!-- Внешние системы -->
+  <rect class="group" x="1040" y="40" width="210" height="690" rx="12" stroke="#dd6b20"/>
+  <text class="group-label" x="1054" y="66">Внешние системы</text>
+
+  <rect x="1060" y="90" width="170" height="65" rx="10" fill="#fffaf0" stroke="#dd6b20" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <text class="label" x="1145" y="115" text-anchor="middle" dominant-baseline="middle">Google Sheets</text>
+  <text class="sub" x="1145" y="137" text-anchor="middle" dominant-baseline="middle">sheetsfake:8082</text>
+
+  <rect x="1060" y="185" width="170" height="65" rx="10" fill="#fffaf0" stroke="#dd6b20" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <text class="label" x="1145" y="210" text-anchor="middle" dominant-baseline="middle">Webhook</text>
+  <text class="sub" x="1145" y="232" text-anchor="middle" dominant-baseline="middle">webhookfake:8083</text>
+
+  <rect x="1060" y="620" width="170" height="80" rx="10" fill="#fffaf0" stroke="#dd6b20" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <text class="label" x="1145" y="650" text-anchor="middle" dominant-baseline="middle">Bitrix24</text>
+  <text class="sub" x="1145" y="672" text-anchor="middle" dominant-baseline="middle">bitrixfake:8081</text>
+
+  <!-- Связи -->
+  <line class="edge" x1="210" y1="255" x2="350" y2="200" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="280" y="240" text-anchor="middle">HTTP</text>
+
+  <line class="edge" x1="220" y1="137" x2="350" y2="165" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="282" y="140" text-anchor="middle">GET /metrics</text>
+
+  <line class="edge" x1="570" y1="200" x2="770" y2="310" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="672" y="246" text-anchor="middle">SQL</text>
+
+  <line class="edge" x1="570" y1="320" x2="770" y2="345" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="670" y="338" text-anchor="middle">requeue stale</text>
+
+  <line class="edge" x1="570" y1="445" x2="770" y2="360" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="668" y="408" text-anchor="middle">claim / complete</text>
+
+  <line class="edge" x1="570" y1="475" x2="770" y2="470" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="668" y="466" text-anchor="middle">rate limit</text>
+
+  <line class="edge" x1="540" y1="150" x2="1060" y2="110" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="800" y="120" text-anchor="middle">export</text>
+
+  <line class="edge" x1="570" y1="185" x2="1060" y2="210" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="800" y="194" text-anchor="middle">export</text>
+
+  <line class="edge" x1="540" y1="500" x2="1060" y2="660" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="810" y="572" text-anchor="middle">find / add</text>
+
+</svg>

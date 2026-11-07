@@ -4,8 +4,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG BINARY=./cmd/app
-RUN CGO_ENABLED=0 go build -o /out/app ${BINARY}
+RUN CGO_ENABLED=0 go build -o /service ${BINARY}
 
 FROM alpine:3.19
-COPY --from=build /out/app /app
-ENTRYPOINT ["/app"]
+COPY --from=build /service /service
+ENTRYPOINT ["/service"]

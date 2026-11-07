@@ -43,3 +43,51 @@ services:
       HTTP_ADDR: ":8081"
     ports:
       - "8081:8081"
+
+  sheetsfake:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: ./cmd/sheetsfake
+    environment:
+      HTTP_ADDR: ":8082"
+    ports:
+      - "8082:8082"
+
+  webhookfake:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: ./cmd/webhookfake
+    environment:
+      HTTP_ADDR: ":8083"
+    ports:
+      - "8083:8083"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: ./cmd/app
+    environment:
+      DATABASE_URL: postgres://leads:leads@postgres:5432/leads?sslmode=disable
+      BITRIX_BASE_URL: http://bitrixfake:8081/rest/1/token
+      SHEETS_BASE_URL: http://sheetsfake:8082
+      REDIS_URL: redis://redis:6379/0
+      HTTP_ADDR: ":8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      bitrixfake:
+        condition: service_started
+      sheetsfake:
+        condition: service_started
+      webhookfake:
+        condition: service_started
