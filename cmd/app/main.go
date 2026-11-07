@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,13 @@ func main() {
 		addr = ":8080"
 	}
 
+	bitrixTimeout := durationEnv("BITRIX_TIMEOUT", 5*time.Second)
+	reaperEvery := durationEnv("REAPER_EVERY", time.Minute)
+	reaperAfter := durationEnv("REAPER_AFTER", 30*time.Second)
+	if err := validateReaperAfter(reaperAfter, bitrixTimeout); err != nil {
+		log.Fatal(err)
+	}
+
 	db, err := sqlx.Connect("pgx", dsn)
 	if err != nil {
 		log.Fatal(err)
@@ -57,7 +65,7 @@ func main() {
 	if bitrixBaseURL == "" {
 		logger.Warn("BITRIX_BASE_URL is empty, bitrix sync jobs will fail")
 	}
-	bitrixClient := bitrix.New(bitrixBaseURL, durationEnv("BITRIX_TIMEOUT", 5*time.Second))
+	bitrixClient := bitrix.New(bitrixBaseURL, bitrixTimeout)
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
@@ -93,6 +101,10 @@ func main() {
 		go w.Run(ctx)
 	}
 	logger.Info("worker started", "concurrency", concurrency)
+
+	reaper := worker.NewReaper(jobRepo, reaperEvery, reaperAfter, logger)
+	go reaper.Run(ctx)
+	logger.Info("reaper started", "every", reaperEvery, "after", reaperAfter)
 
 	r := chi.NewRouter()
 	handler.New(customers, leads, imports, qualification, exports).Register(r)
@@ -137,4 +149,13 @@ func durationEnv(name string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+// validateReaperAfter makes sure a job cannot be reaped while its Bitrix call
+// is still legitimately running.
+func validateReaperAfter(reaperAfter, bitrixTimeout time.Duration) error {
+	if reaperAfter <= bitrixTimeout {
+		return fmt.Errorf("REAPER_AFTER (%s) must be greater than BITRIX_TIMEOUT (%s)", reaperAfter, bitrixTimeout)
+	}
+	return nil
 }

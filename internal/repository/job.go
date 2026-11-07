@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -135,4 +136,24 @@ func (r *JobRepository) Defer(ctx context.Context, job Job, backoff time.Duratio
 		return ErrJobLockLost
 	}
 	return nil
+}
+
+// Reap returns stale in_progress jobs to the queue. run_at is set to now():
+// the job is already overdue, so it must be claimable immediately, unlike a
+// rate-limit deferral which adds a backoff.
+func (r *JobRepository) Reap(ctx context.Context, olderThan time.Duration) (int64, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE jobs
+		SET status = 'queued', run_at = now(), locked_at = now()
+		WHERE id IN (
+			SELECT id
+			FROM jobs
+			WHERE status = 'in_progress'
+			  AND locked_at < now() - $1::interval
+			FOR UPDATE SKIP LOCKED
+		)`, fmt.Sprintf("%d seconds", int64(olderThan/time.Second)))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

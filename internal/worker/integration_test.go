@@ -445,3 +445,48 @@ func TestRedisErrorDefersJob(t *testing.T) {
 		t.Fatalf("bitrix_id = %q, want NULL", *bitrixID)
 	}
 }
+
+func TestFailedJobKeepsExistingBitrixID(t *testing.T) {
+	db := openWorkerTestDB(t)
+	ctx := context.Background()
+	job, leadID := insertClaimedJob(t, db)
+
+	if _, err := db.ExecContext(ctx,
+		`UPDATE leads SET bitrix_id = 'existing' WHERE id = $1`, leadID); err != nil {
+		t.Fatal(err)
+	}
+
+	ctrl := gomock.NewController(t)
+	client := mock.NewMockClient(ctrl)
+	client.EXPECT().
+		FindByOriginID(gomock.Any(), strconv.Itoa(leadID)).
+		Return("", false, &bitrix.HTTPError{Status: http.StatusBadRequest})
+
+	w := New(
+		seededJobs{JobRepository: repository.NewJobRepository(db), job: job},
+		repository.NewLeadRepository(db),
+		client,
+		discardLogger(),
+	)
+	if _, err := w.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var status string
+	if err := db.GetContext(ctx, &status,
+		`SELECT status FROM jobs WHERE id = $1`, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" {
+		t.Fatalf("status = %q, want failed", status)
+	}
+
+	var bitrixID *string
+	if err := db.GetContext(ctx, &bitrixID,
+		`SELECT bitrix_id FROM leads WHERE id = $1`, leadID); err != nil {
+		t.Fatal(err)
+	}
+	if bitrixID == nil || *bitrixID != "existing" {
+		t.Fatalf("bitrix_id = %v, want existing", bitrixID)
+	}
+}
