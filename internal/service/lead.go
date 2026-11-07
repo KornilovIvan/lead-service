@@ -14,6 +14,11 @@ type LeadService struct {
 	repo *repository.LeadRepository
 }
 
+const (
+	DefaultLeadListLimit = 20
+	MaxLeadListLimit     = 100
+)
+
 func NewLeadService(repo *repository.LeadRepository) *LeadService {
 	return &LeadService{repo: repo}
 }
@@ -66,7 +71,7 @@ func (s *LeadService) List(ctx context.Context, customerID, limit int, status *s
 	if customerID == 0 {
 		return model.LeadPage{}, ErrCustomerIDRequired
 	}
-	if limit < 1 || limit > 100 {
+	if limit < 1 || limit > MaxLeadListLimit {
 		return model.LeadPage{}, ErrInvalidLimit
 	}
 	if status != nil && *status != "new" && *status != "qualified" && *status != "rejected" {

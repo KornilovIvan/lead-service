@@ -174,10 +174,10 @@ func (h *Handler) listLeads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 20
+	limit := service.DefaultLeadListLimit
 	if raw := q.Get("limit"); raw != "" {
 		limit, err = strconv.Atoi(raw)
-		if err != nil || limit < 1 || limit > 100 {
+		if err != nil {
 			writeError(w, http.StatusBadRequest, service.ErrInvalidLimit.Error())
 			return
 		}
