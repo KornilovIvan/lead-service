@@ -2,3 +2,8 @@ test:
   image: golang:1.21
   script:
     - go test ./...
+
+lint:
+  image: golangci/golangci-lint:v1.55.2
+  script:
+    - golangci-lint run

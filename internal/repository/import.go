@@ -21,7 +21,7 @@ func (r *ImportRepository) Create(ctx context.Context, job model.ImportJob, lead
 	if err != nil {
 		return model.ImportJob{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, lead := range leads {
 		if _, err := insertLead(ctx, tx, lead); err != nil {

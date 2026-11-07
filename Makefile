@@ -20,3 +20,6 @@ test-db:
 
 test:
 	TEST_DATABASE_URL='postgres://leads:leads@localhost:5432/leads_test?sslmode=disable' REDIS_URL='$(REDIS_URL)' go test ./...
+
+lint:
+	docker run --rm -v "$(CURDIR)":/app -w /app golangci/golangci-lint:v1.55.2 golangci-lint run

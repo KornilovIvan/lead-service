@@ -37,7 +37,7 @@ func (r *JobRepository) Claim(ctx context.Context) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	const q = `
 		UPDATE jobs
@@ -70,7 +70,7 @@ func (r *JobRepository) Complete(ctx context.Context, job Job, bitrixID string) 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE leads SET bitrix_id = $1 WHERE id = $2`, bitrixID, job.LeadID); err != nil {

@@ -24,7 +24,7 @@ func (r *LeadRepository) Create(ctx context.Context, lead model.Lead) (model.Lea
 	if err != nil {
 		return model.Lead{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	const insertLead = `
 		INSERT INTO leads (customer_id, name, phone, email, status)
